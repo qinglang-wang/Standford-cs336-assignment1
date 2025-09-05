@@ -1,6 +1,8 @@
 import os
+import regex as re
 import numpy as np
 from typing import List, BinaryIO
+from collections import defaultdict
 from concurrent.futures import Future, ProcessPoolExecutor, as_completed
 from qinglang.utils.utils import Config
 
@@ -15,6 +17,7 @@ class BPETokenizer:
                 READ_UNIT_SIZE = 4 * 1024,
             )
         )
+
         self.PAT = r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
 
     def pre_tokenize(self):
@@ -39,11 +42,14 @@ class BPETokenizer:
             return list(zip(boundaries[:-1], boundaries[1:]))
 
         def subprocess(path: str, chunk_boundary: List) -> Future:
+            result = defaultdict(int)
             with open(path, 'rb') as f:
                 f.seek(chunk_boundary[0])
-                content = f.read(chunk_boundary[1] - chunk_boundary[0])
+                chunk = f.read(chunk_boundary[1] - chunk_boundary[0])
+                for match in re.finditer(self.PAT, chunk):
+                    result[match.group()] += 1
 
-                return content
+                return result
 
         chunk_boundaries = divide_chunks(self.config.path, delimiter=b'<|endoftext|>')
 
@@ -53,5 +59,9 @@ class BPETokenizer:
 
             for future in as_completed(futures):
                 results.append(future.result())
-
         return results
+    
+
+if __name__ == '__main__':
+    bpe = BPETokenizer()
+    print(bpe.pre_tokenize())
